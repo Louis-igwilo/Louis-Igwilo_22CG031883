@@ -8,11 +8,11 @@ from PIL import Image
 import uuid
 
 # Initialize Flask app
-app = Flask(__name__, static_folder="uploads")  # uploads folder served as static
+app = Flask(__name__, static_folder="uploads")  # serve uploads as static
 
 # Database configuration
 if os.environ.get("RENDER") == "true":
-    DATABASE_URL = os.environ.get("DATABASE_URL")  # PostgreSQL on Render
+    DATABASE_URL = os.environ.get("DATABASE_URL")  # Render Postgres
 else:
     DATABASE_URL = "sqlite:///database.db"        # Local SQLite
 
@@ -28,7 +28,7 @@ class UserEmotion(db.Model):
     prediction = db.Column(db.String(50))
     timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
 
-# Create table if it doesn't exist
+# Create table if not exists
 with app.app_context():
     db.create_all()
 
@@ -36,7 +36,7 @@ with app.app_context():
 MODEL_PATH = "emotion_model.h5"
 model = load_model(MODEL_PATH)
 
-# Define your emotion classes
+# Define emotion classes
 EMOTIONS = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
 
 # Folder to save uploaded images
@@ -49,23 +49,27 @@ def save_record(name, image_filename, prediction):
     db.session.add(record)
     db.session.commit()
 
-# Route for homepage (upload form)
+# -----------------------
+# Routes
+# -----------------------
+
+# Homepage: shows form
 @app.route("/", methods=["GET"])
 def index():
     return render_template("index.html")
 
-# Route for prediction
+# Predict route: handles POST and shows result
 @app.route("/predict", methods=["POST"])
 def predict():
     name = request.form.get("name", "Anonymous")
-    file = request.files.get("file")  # match input name in your HTML
+    file = request.files.get("file")  # must match input name in HTML
     if file:
         # Save uploaded image
         filename = f"{uuid.uuid4().hex}_{file.filename}"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         file.save(filepath)
 
-        # Prepare image for the model
+        # Prepare image for model
         img = Image.open(filepath).convert('L')  # grayscale
         img = img.resize((48, 48))
         img_array = image.img_to_array(img)
@@ -76,17 +80,19 @@ def predict():
         prediction_probs = model.predict(img_array)
         prediction = EMOTIONS[np.argmax(prediction_probs)]
 
-        # Save record to database
+        # Save record in database
         save_record(name, filename, prediction)
 
         # Render result page
         return render_template("result.html",
                                emotion=prediction,
-                               image_path=filename)  # use image_path in result.html
+                               image_path=filename)
 
-    # Redirect back if no file uploaded
+    # Redirect to homepage if no file
     return redirect("/")
 
-# Run Flask
+# -----------------------
+# Run app
+# -----------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

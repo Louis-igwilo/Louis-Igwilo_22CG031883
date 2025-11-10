@@ -21,8 +21,11 @@
             border-radius: 10px;
             box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
         }
-        input[type="file"] {
-            margin-top: 20px;
+        input[type="file"], input[type="text"] {
+            margin-top: 15px;
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
         }
         button {
             margin-top: 20px;
@@ -41,10 +44,10 @@
 <body>
 
     <h1>Emotion Detection Using AI</h1>
-    <p>Upload an image to detect the emotion.</p>
+    <p>Upload an image and let the AI predict the emotion.</p>
 
     <form action="/predict" method="post" enctype="multipart/form-data">
-        <input type="text" name="name" placeholder="Enter your name" required>
+        <input type="text" name="name" placeholder="Enter your name (optional)">
         <br>
         <input type="file" name="file" accept="image/*" required>
         <br>
