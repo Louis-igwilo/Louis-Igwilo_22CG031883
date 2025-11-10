@@ -45,8 +45,10 @@
 
     <h1>Detected Emotion</h1>
 
-    <img src="{{ image_path }}" alt="Uploaded Image">
+    <!-- Show uploaded image -->
+    <img src="{{ url_for('static', filename=image_path) }}" alt="Uploaded Image">
 
+    <!-- Show prediction -->
     <p class="emotion">{{ emotion }}</p>
 
     <a href="/">Try Another Image</a>

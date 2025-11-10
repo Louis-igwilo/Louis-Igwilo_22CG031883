@@ -1,7 +1,6 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
 import numpy as np
@@ -9,7 +8,7 @@ from PIL import Image
 import uuid
 
 # Initialize Flask app
-app = Flask(__name__)
+app = Flask(__name__, static_folder="uploads")  # uploads folder served as static
 
 # Database configuration
 if os.environ.get("RENDER") == "true":
@@ -17,7 +16,7 @@ if os.environ.get("RENDER") == "true":
 else:
     DATABASE_URL = "sqlite:///database.db"        # Local SQLite
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -33,7 +32,7 @@ class UserEmotion(db.Model):
 with app.app_context():
     db.create_all()
 
-# Load your trained model (adjust the path to your .h5 file)
+# Load your trained model
 MODEL_PATH = "emotion_model.h5"
 model = load_model(MODEL_PATH)
 
@@ -50,35 +49,43 @@ def save_record(name, image_filename, prediction):
     db.session.add(record)
     db.session.commit()
 
-# Route for homepage
-@app.route("/", methods=["GET", "POST"])
+# Route for homepage (upload form)
+@app.route("/", methods=["GET"])
 def index():
-    if request.method == "POST":
-        name = request.form.get("name", "Anonymous")
-        file = request.files.get("image")
-        if file:
-            # Save the image
-            filename = f"{uuid.uuid4().hex}_{file.filename}"
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-            file.save(filepath)
+    return render_template("index.html")
 
-            # Prepare image for model
-            img = Image.open(filepath).convert('L')  # grayscale if model expects
-            img = img.resize((48, 48))              # adjust size to your model
-            img_array = image.img_to_array(img)
-            img_array = np.expand_dims(img_array, axis=0)
-            img_array /= 255.0                       # normalize if needed
+# Route for prediction
+@app.route("/predict", methods=["POST"])
+def predict():
+    name = request.form.get("name", "Anonymous")
+    file = request.files.get("file")  # match input name in your HTML
+    if file:
+        # Save uploaded image
+        filename = f"{uuid.uuid4().hex}_{file.filename}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
 
-            # Predict emotion
-            prediction_probs = model.predict(img_array)
-            prediction = EMOTIONS[np.argmax(prediction_probs)]
+        # Prepare image for the model
+        img = Image.open(filepath).convert('L')  # grayscale
+        img = img.resize((48, 48))
+        img_array = image.img_to_array(img)
+        img_array = np.expand_dims(img_array, axis=0)
+        img_array /= 255.0
 
-            # Save record to database
-            save_record(name, filename, prediction)
+        # Predict emotion
+        prediction_probs = model.predict(img_array)
+        prediction = EMOTIONS[np.argmax(prediction_probs)]
 
-            return render_template("index.html", prediction=prediction, filename=filename)
+        # Save record to database
+        save_record(name, filename, prediction)
 
-    return render_template("index.html", prediction=None)
+        # Render result page
+        return render_template("result.html",
+                               emotion=prediction,
+                               image_path=filename)  # use image_path in result.html
+
+    # Redirect back if no file uploaded
+    return redirect("/")
 
 # Run Flask
 if __name__ == "__main__":

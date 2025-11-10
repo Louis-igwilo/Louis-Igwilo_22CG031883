@@ -44,6 +44,8 @@
     <p>Upload an image to detect the emotion.</p>
 
     <form action="/predict" method="post" enctype="multipart/form-data">
+        <input type="text" name="name" placeholder="Enter your name" required>
+        <br>
         <input type="file" name="file" accept="image/*" required>
         <br>
         <button type="submit">Detect Emotion</button>
