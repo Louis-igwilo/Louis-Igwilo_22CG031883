@@ -11,15 +11,10 @@ import uuid
 app = Flask(__name__, static_folder="uploads")  # serve uploads as static
 
 # Database configuration
-if os.environ.get("RENDER") == "true":
-    DATABASE_URL = os.environ.get("DATABASE_URL")  # Render Postgres
-else:
-    DATABASE_URL = "sqlite:///database.db"        # Local SQLite
-
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///database.db"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
 
+db = SQLAlchemy(app)
 # Database table
 class UserEmotion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
