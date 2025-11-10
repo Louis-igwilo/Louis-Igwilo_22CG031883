@@ -1,73 +1,85 @@
-from flask import Flask, render_template, request
 import os
-import numpy as np
+from flask import Flask, render_template, request, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
+import numpy as np
 from PIL import Image
+import uuid
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Load your trained model
-model = load_model('emotion_model.h5')
+# Database configuration
+if os.environ.get("RENDER") == "true":
+    DATABASE_URL = os.environ.get("DATABASE_URL")  # PostgreSQL on Render
+else:
+    DATABASE_URL = "sqlite:///database.db"        # Local SQLite
 
-# Set upload folder
-UPLOAD_FOLDER = 'static/uploads'
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+# Database table
+class UserEmotion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100))
+    image_filename = db.Column(db.String(100))
+    prediction = db.Column(db.String(50))
+    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+# Create table if it doesn't exist
+with app.app_context():
+    db.create_all()
+
+# Load your trained model (adjust the path to your .h5 file)
+MODEL_PATH = "emotion_model.h5"
+model = load_model(MODEL_PATH)
+
+# Define your emotion classes
+EMOTIONS = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
+
+# Folder to save uploaded images
+UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Define allowed image extensions
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+# Helper function to save record
+def save_record(name, image_filename, prediction):
+    record = UserEmotion(name=name, image_filename=image_filename, prediction=prediction)
+    db.session.add(record)
+    db.session.commit()
 
-def allowed_file(filename):
-    """Check if uploaded file has an allowed extension."""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-@app.route('/')
+# Route for homepage
+@app.route("/", methods=["GET", "POST"])
 def index():
-    """Render home page."""
-    return render_template('index.html')
+    if request.method == "POST":
+        name = request.form.get("name", "Anonymous")
+        file = request.files.get("image")
+        if file:
+            # Save the image
+            filename = f"{uuid.uuid4().hex}_{file.filename}"
+            filepath = os.path.join(UPLOAD_FOLDER, filename)
+            file.save(filepath)
 
+            # Prepare image for model
+            img = Image.open(filepath).convert('L')  # grayscale if model expects
+            img = img.resize((48, 48))              # adjust size to your model
+            img_array = image.img_to_array(img)
+            img_array = np.expand_dims(img_array, axis=0)
+            img_array /= 255.0                       # normalize if needed
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    """Handle image upload and make prediction."""
-    try:
-        # Check if file part exists
-        if 'file' not in request.files:
-            return "No file part in request", 400
+            # Predict emotion
+            prediction_probs = model.predict(img_array)
+            prediction = EMOTIONS[np.argmax(prediction_probs)]
 
-        file = request.files['file']
+            # Save record to database
+            save_record(name, filename, prediction)
 
-        if file.filename == '':
-            return "No file selected", 400
+            return render_template("index.html", prediction=prediction, filename=filename)
 
-        if not allowed_file(file.filename):
-            return "Invalid file format. Please upload a PNG or JPG image.", 400
+    return render_template("index.html", prediction=None)
 
-        # Save uploaded file
-        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(filepath)
-
-        # Open and preprocess the image safely
-        img = Image.open(filepath).convert('L')  # Convert to grayscale
-        img = img.resize((48, 48))
-        img_array = np.array(img).reshape(1, 48, 48, 1) / 255.0
-
-        # Make prediction
-        prediction = model.predict(img_array)
-        emotion_index = np.argmax(prediction)
-
-        # Define emotion labels
-        emotions = ['Angry', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sad', 'Surprise']
-        predicted_emotion = emotions[emotion_index]
-
-        # Render result page
-        return render_template('result.html', emotion=predicted_emotion, image_path=filepath)
-
-    except Exception as e:
-        return f"Error: {str(e)}", 500
-
-
-if __name__ == '__main__':
+# Run Flask
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
